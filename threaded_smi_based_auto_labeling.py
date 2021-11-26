@@ -56,7 +56,7 @@ parser.add_argument("--experiment", "-e", default="mnist", type=str, help="Exper
 parser.add_argument("--alpha", "-a", default=0.9, type=float, help="ALPHA Value")
 parser.add_argument("--al_strategy", default="random", type=str, help="AL strategy")
 parser.add_argument("--bl", default=False, type=bool, help="use balanced loss")
-parser.add_argument("--device", default=0, type=int, help="DEVICE ID")
+parser.add_argument("--device", default=1, type=int, help="DEVICE ID")
 init_args = parser.parse_args()
 experiment_name = init_args.experiment
 alpha = init_args.alpha
@@ -81,7 +81,7 @@ if experiment_name == 'cifar10':
             'max_accuracy': 0.99,
             'n_epoch': 300,
             'lr': 0.001,
-            'device': 'cuda:'+ device_id,
+            'device': 'cuda:'+ str(device_id),
             'batch_size': 64,
             'thread_count': 3,
             'metric': 'cosine',
@@ -107,7 +107,7 @@ elif experiment_name == 'mnist':
             'max_accuracy': 0.99,
             'n_epoch': 300,
             'lr': 0.001,
-            'device': 'cuda:0',
+            'device': 'cuda:'+ str(device_id),
             'batch_size': 64,
             'thread_count': 3,
             'metric': 'cosine',
@@ -126,7 +126,7 @@ elif experiment_name == 'cifar100':
             'max_accuracy': 0.99,
             'n_epoch': 300,
             'lr': 0.001,
-            'device': 'cuda',
+            'device': 'cuda:'+ str(device_id),
             'batch_size': 64,
             'metric': 'cosine',
             'embedding_type': 'gradients',
@@ -1758,12 +1758,11 @@ plot_title_font_size = 22
 
 """### Load Experiment Results"""
 
-def get_experiment_results(auto_label_load_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss=False):
+def get_experiment_results(auto_label_load_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss=False):
 
     #train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
     #init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
     #num_al_rounds = (train_cap - seed_set_size) // budget
-
     exp_results_list = []
 
     for run_count in range(per_exp_runs):
@@ -1773,7 +1772,7 @@ def get_experiment_results(auto_label_load_directory, dataset_root_directory, da
             file_name_field = F"features_{args['layer_name']}"
 
         # Get the results file name    
-        experiment_results_file_name = F"{selection_mode}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{args['smi_function']}_{args['al_strategy']}_{file_name_field}_{args['metric']}_{run_count}.json"
+        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{args['smi_function']}_{args['al_strategy']}_{file_name_field}_{args['metric']}_{run_count}.json"
         experiment_results_path = os.path.join(auto_label_load_directory, experiment_results_file_name)
 
         # Determine if this experiment can be loaded
@@ -1972,10 +1971,11 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     lines_for_legend = []
 
     # Do auto fl1mi
+    beta = 0.0
     selection_mode = "auto"
     args['smi_function'] = 'fl1mi'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
@@ -1988,7 +1988,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     selection_mode = "auto"
     args['smi_function'] = 'fl2mi'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
@@ -2001,7 +2001,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     selection_mode = "auto"
     args['smi_function'] = 'gcmi'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
@@ -2014,7 +2014,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     selection_mode = "auto"
     args['smi_function'] = 'logdetmi'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
@@ -2027,7 +2027,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     selection_mode = "auto"
     args['smi_function'] = 'highest_confidence'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
@@ -2040,7 +2040,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     selection_mode = "auto"
     args['smi_function'] = 'highest_confidence'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     # Random's labeling cost differs from the rest.
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     #labeling_cost = [exp_results_list[0]['budget'] * i * cost_to_assign_label for i in range(len(exp_results_list[0]['set_sizes']))]
