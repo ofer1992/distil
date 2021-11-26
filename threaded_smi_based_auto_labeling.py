@@ -56,7 +56,7 @@ parser.add_argument("--experiment", "-e", default="mnist", type=str, help="Exper
 parser.add_argument("--alpha", "-a", default=0.9, type=float, help="ALPHA Value")
 parser.add_argument("--al_strategy", default="random", type=str, help="AL strategy")
 parser.add_argument("--bl", default=False, type=bool, help="use balanced loss")
-parser.add_argument("--device", default=1, type=int, help="DEVICE ID")
+parser.add_argument("--device", default=0, type=int, help="DEVICE ID")
 init_args = parser.parse_args()
 experiment_name = init_args.experiment
 alpha = init_args.alpha
