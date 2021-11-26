@@ -27,6 +27,7 @@ import submodlib
 import sys
 import time
 import torch
+from torch._C import device
 import torch.multiprocessing as mp
 import torch.optim as optim
 import zipfile
@@ -55,12 +56,13 @@ parser.add_argument("--experiment", "-e", default="mnist", type=str, help="Exper
 parser.add_argument("--alpha", "-a", default=0.9, type=float, help="ALPHA Value")
 parser.add_argument("--al_strategy", default="random", type=str, help="AL strategy")
 parser.add_argument("--bl", default=False, type=bool, help="use balanced loss")
+parser.add_argument("--device", default=0, type=int, help="DEVICE ID")
 init_args = parser.parse_args()
-
 experiment_name = init_args.experiment
 alpha = init_args.alpha
 active_learning_strategy = init_args.al_strategy
 balance_loss = init_args.bl
+device_id = init_args.device
 
 """## Pre-Experiment"""
 if experiment_name == 'cifar10':
@@ -79,7 +81,7 @@ if experiment_name == 'cifar10':
             'max_accuracy': 0.99,
             'n_epoch': 300,
             'lr': 0.001,
-            'device': 'cuda',
+            'device': 'cuda:'+ device_id,
             'batch_size': 64,
             'thread_count': 3,
             'metric': 'cosine',
