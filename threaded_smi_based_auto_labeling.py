@@ -1298,7 +1298,7 @@ def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_roun
         exp_dict['human_corrected_selection_matrices'].append(human_corrected_selection_matrix)
         exp_dict['auto_selection_times'].append(auto_selection_time)
         exp_dict['al_selection_times'].append(al_selection_time)
-        exp_dict['al_cnt'] = al_cnt
+        exp_dict['al_cnt'] = al_cnt.tolist()
 
         full_dataset.transform = train_transform # Re-enable any augmentation done during training
 
