@@ -1692,14 +1692,14 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
 """## Pure Active Learning
 """
 auto_label_al_save_directory = os.path.join(base_save_directory, 'AL')
-alpha = 0.0
+# alpha = 0.0
 beta = 0.0
 auto_labeling_strategy = "highest_confidence"
 #active_learning_strategy = "random"
 args['num_partitions'] = 1
 # balance_loss = False
 
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
+auto_label_results_save_directory = os.path.join(base_save_directory, F"{0.0}_{beta}")
 os.makedirs(auto_label_results_save_directory, exist_ok=True)
 
 for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
@@ -1714,7 +1714,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
             file_name_field = F"features_{args['layer_name']}"
 
         # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+        experiment_results_file_name = F"0.0_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
         experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
 
         # Determine if this experiment needs to be run
@@ -1724,7 +1724,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
             print("======================================")
 
             # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
+            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, 0.0, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
             with open(experiment_results_path, "w") as write_file:
                 json.dump(results, write_file)
         else:
