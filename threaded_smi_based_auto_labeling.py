@@ -17,7 +17,10 @@ import gc
 import json
 import math
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+# import matplotlib
+# import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
@@ -62,6 +65,7 @@ experiment_name = init_args.experiment
 alpha = init_args.alpha
 active_learning_strategy = init_args.al_strategy
 balance_loss = init_args.bl
+# print("\n Balanced Loss is: ", balance_loss, "\n")
 device_id = init_args.device
 
 """## Pre-Experiment"""
@@ -1965,9 +1969,9 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     ylabel = r"\textbf{Test Accuracy}"
     title = F"{seed_set_size} to {train_cap} using budget {budget} with Alpha={alpha}"
     comparison_fig.suptitle(title, fontsize=plot_title_font_size)
-    axes[0].set_title(r"\textbf{Accuracy vs Labeling Cost}", fontsize=plot_title_font_size)
-    axes[0].set_xlabel(xlabel, fontsize=axis_label_font_size)
-    axes[0].set_ylabel(ylabel, fontsize=axis_label_font_size)
+    axes.set_title(r"\textbf{Accuracy vs Labeling Cost}", fontsize=plot_title_font_size)
+    axes.set_xlabel(xlabel, fontsize=axis_label_font_size)
+    axes.set_ylabel(ylabel, fontsize=axis_label_font_size)
     lines_for_legend = []
 
     # Do auto fl1mi
@@ -1980,9 +1984,9 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
     upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes[0].plot(labeling_cost, average_acc, color=strategy_colors['fl1mi_a'], marker='o')[0]
+    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['fl1mi_a'], marker='o')[0]
     lines_for_legend.append(line)
-    axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl1mi_a'])
+    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl1mi_a'])
     
     # Do auto fl2mi
     selection_mode = "auto"
@@ -1993,9 +1997,9 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
     upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes[0].plot(labeling_cost, average_acc, color=strategy_colors['fl2mi_a'], marker='o')[0]
+    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['fl2mi_a'], marker='o')[0]
     lines_for_legend.append(line)
-    axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl2mi_a'])
+    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl2mi_a'])
     
     # Do auto gcmi
     selection_mode = "auto"
@@ -2006,9 +2010,9 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
     upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes[0].plot(labeling_cost, average_acc, color=strategy_colors['gcmi_a'], marker='o')[0]
+    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['gcmi_a'], marker='o')[0]
     lines_for_legend.append(line)
-    axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['gcmi_a'])
+    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['gcmi_a'])
     
     # Do auto logdetmi
     selection_mode = "auto"
@@ -2019,9 +2023,9 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
     upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes[0].plot(labeling_cost, average_acc, color=strategy_colors['logdetmi_a'], marker='o')[0]
+    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['logdetmi_a'], marker='o')[0]
     lines_for_legend.append(line)
-    axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['logdetmi_a'])
+    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['logdetmi_a'])
     
     # Do Auto highest confidence
     selection_mode = "auto"
@@ -2032,31 +2036,31 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
     upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes[0].plot(labeling_cost, average_acc, color=strategy_colors['confidence_a'], marker='o')[0]
+    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['confidence_a'], marker='o')[0]
     lines_for_legend.append(line)
-    axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['confidence_a'])
+    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['confidence_a'])
     
     # Do AL
-    alpha = 0.0
+    # alpha = 0.0
     selection_mode = "auto"
     args['smi_function'] = 'highest_confidence'
     args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, 0.0, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
     # Random's labeling cost differs from the rest.
     labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
     #labeling_cost = [exp_results_list[0]['budget'] * i * cost_to_assign_label for i in range(len(exp_results_list[0]['set_sizes']))]
     average_acc, std = get_avg_std_test_acc(exp_results_list)
     lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
     upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes[0].plot(labeling_cost, average_acc, color=strategy_colors['al'], marker='o')[0]
+    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['al'], marker='o')[0]
     lines_for_legend.append(line)
-    axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['al'])
+    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['al'])
     label_list = [strategy_labels[key] for key in strategy_labels]
     label_perm = [0,1,2,3,4,5]
     label_list = [label_list[i] for i in label_perm]
     lines_for_legend = [lines_for_legend[i] for i in label_perm]
     comparison_fig.legend(lines_for_legend, label_list, loc="upper center", ncol=6, borderaxespad=3)
     # plt.show()
-    jpg_file = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{active_learning_strategy}_{file_name_field}_{args['metric']}.jpg"
+    jpg_file = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{active_learning_strategy}_{args['metric']}.png"
     image_path = os.path.join(auto_label_no_hil_save_directory, jpg_file)
     plt.savefig(image_path)
