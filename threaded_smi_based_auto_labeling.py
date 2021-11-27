@@ -2037,6 +2037,7 @@ for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
     axes[0].fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['confidence_a'])
     
     # Do AL
+    alpha = 0.0
     selection_mode = "auto"
     args['smi_function'] = 'highest_confidence'
     args['al_strategy'] = active_learning_strategy
