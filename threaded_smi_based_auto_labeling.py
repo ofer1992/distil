@@ -50,122 +50,10 @@ from torchvision import datasets, transforms
 from tsnecuda import TSNE
 from argparse import ArgumentParser
 
-"""
-Experimental Settings
-"""
-parser = ArgumentParser()
-# dataset config
-parser.add_argument("--experiment", "-e", default="mnist", type=str, help="Experiment setting")
-parser.add_argument("--alpha", "-a", default=0.9, type=float, help="ALPHA Value")
-parser.add_argument("--al_strategy", default="random", type=str, help="AL strategy")
-parser.add_argument("--bl", default=False, type=bool, help="use balanced loss")
-parser.add_argument("--device", default=0, type=int, help="DEVICE ID")
-init_args = parser.parse_args()
-experiment_name = init_args.experiment
-alpha = init_args.alpha
-active_learning_strategy = init_args.al_strategy
-balance_loss = init_args.bl
-# print("\n Balanced Loss is: ", balance_loss, "\n")
-device_id = init_args.device
-
-"""## Pre-Experiment"""
-if experiment_name == 'cifar10':
-    dataset_name = "CIFAR10"
-    model_name = "resnet18"
-    experiment_seed_budget_caps = [(3000,3000,30000),
-                               (500,500,5000),
-                               (1000,1000,10000),
-                               (2000,2000,20000)]
-    mp.set_start_method("spawn")
-    per_exp_runs = 1
-    args = {'islogs': False,
-            'optimizer': 'sgd',
-            'isverbose': True,
-            'isreset': True,
-            'max_accuracy': 0.99,
-            'n_epoch': 300,
-            'lr': 0.001,
-            'device': 'cuda:'+ str(device_id),
-            'batch_size': 64,
-            'thread_count': 3,
-            'metric': 'cosine',
-            'embedding_type': 'gradients',
-            'gradType': 'bias_linear'}            
-elif experiment_name == 'mnist':
-    dataset_name = "MNIST"
-    model_name = "mnistnet"
-    experiment_seed_budget_caps = [(20,30,200),
-                                (20,60,200),
-                                (20,90,200),
-                                (40,180,400),
-                                (100,150,1000),
-                                (500,2000,2500),
-                                (100,900,1000),
-                                (20,180,200)
-                                ]
-    per_exp_runs = 3
-    args = {'islogs': False,
-            'optimizer': 'sgd',
-            'isverbose': True,
-            'isreset': True,
-            'max_accuracy': 0.99,
-            'n_epoch': 300,
-            'lr': 0.001,
-            'device': 'cuda:'+ str(device_id),
-            'batch_size': 64,
-            'thread_count': 3,
-            'metric': 'cosine',
-            'embedding_type': 'gradients',
-            'gradType': 'bias_linear'}
-elif experiment_name == 'cifar100':
-    dataset_name = "CIFAR100"
-    model_name = "resnet18"
-    experiment_seed_budget_caps = [(5000,5000,25000),
-                                (10000,7500,40000)]
-    per_exp_runs = 3
-    args = {'islogs': False,
-            'optimizer': 'sgd',
-            'isverbose': True,
-            'isreset': True,
-            'max_accuracy': 0.99,
-            'n_epoch': 300,
-            'lr': 0.001,
-            'device': 'cuda:'+ str(device_id),
-            'batch_size': 64,
-            'metric': 'cosine',
-            'embedding_type': 'gradients',
-            'gradType': 'bias_linear'}
-
-"""## Saving Parameters"""
-
-mount_point_directory = "results/" + dataset_name
-google_drive_directory = "results/" + dataset_name
-base_save_directory = "results/" + dataset_name
-
-auto_label_no_hil_save_directory = os.path.join(base_save_directory, "auto_label_no_hil")
-auto_label_no_hil_loss_balanced_save_directory = os.path.join(base_save_directory, "auto_label_no_hil_loss_balanced")
-auto_label_hil_save_directory = os.path.join(base_save_directory, "auto_label_hil")
-
-google_drive_directory = "results/" + dataset_name + "/check/"
-checkpoint_directory = os.path.join(mount_point_directory, google_drive_directory)
-
-google_drive_directory = "results/" + dataset_name+ "/model/"
-model_directory = os.path.join(mount_point_directory, google_drive_directory)
-
-dataset_root_directory = "data/"
-
-os.makedirs(auto_label_no_hil_save_directory, exist_ok=True)
-os.makedirs(auto_label_hil_save_directory, exist_ok=True)
-os.makedirs(checkpoint_directory, exist_ok=True)
-os.makedirs(model_directory, exist_ok=True)
-
-"""
-# EXPERIMENTS
-
 ## Definitions
 
 ### Checkpointing
-"""
+
 
 
 class Checkpoint:
@@ -996,7 +884,7 @@ class ConfidenceAutoLabeler(Strategy):
 
 """### Training Loop"""
 
-def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_rounds, budget, args, nclasses, alpha, beta, auto_labeling_name, active_learning_name, checkpoint_directory, experiment_name, balance_loss=False):
+def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_rounds, budget, args, nclasses, alpha, beta, auto_labeling_name, active_learning_name, checkpoint_directory, experiment_name, balance_loss=False, AL=False):
 
     # Calculate remaining portion of budget, gamma.
     #   alpha:  Percent auto-labeled
@@ -1153,7 +1041,10 @@ def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_roun
 
         # Get the auto-labeler selection budget, which will select points for auto-assigned labels 
         # and human-corrected suggested labels
-        suggested_label_budget = alpha_budget + beta_budget
+        if not AL:
+            suggested_label_budget = alpha_budget + beta_budget
+        else:
+            suggested_label_budget = 0
 
         # If the budget for doing per-class targeted selection is 0, simply assign empty lists for selected idx.
         # Otherwise, proceed with the selection.
@@ -1480,587 +1371,701 @@ def get_experiment_fixture(dataset_root_path, dataset_name, seed_set_size, model
 
     return full_train_dataset, test_dataset, initial_train_idx, model, nclasses
 
-"""## Pure Auto-Labeled
-
-### FL1MI
-"""
-
-# alpha = 0.8
-beta = 0.0
-auto_labeling_strategy = "fl1mi"
-# active_learning_strategy = "random"
-args['num_partitions'] = 5 # FL1MI uses larger kernels; 5 partitions are needed
-# balance_loss = False
-
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
-os.makedirs(auto_label_results_save_directory, exist_ok=True)
-
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
-    train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    num_al_rounds = (train_cap - seed_set_size) // budget
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
-
-        # Determine if this experiment needs to be run
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Running {experiment_results_file_name}")
-            print("======================================")
-
-            # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
-            with open(experiment_results_path, "w") as write_file:
-                json.dump(results, write_file)
-        else:
-            print("======================================")
-            print(F"Results already obtained; skipping {experiment_results_file_name}")
-            print("======================================")
-
-"""### FL2MI"""
-
-# alpha = 
-beta = 0.0
-auto_labeling_strategy = "fl2mi"
-# active_learning_strategy = "random"
-args['num_partitions'] = 1
-# balance_loss = False
-
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
-os.makedirs(auto_label_results_save_directory, exist_ok=True)
-
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
-    train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    num_al_rounds = (train_cap - seed_set_size) // budget
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
-
-        # Determine if this experiment needs to be run
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Running {experiment_results_file_name}")
-            print("======================================")
-
-            # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
-            with open(experiment_results_path, "w") as write_file:
-                json.dump(results, write_file)
-        else:
-            print("======================================")
-            print(F"Results already obtained; skipping {experiment_results_file_name}")
-            print("======================================")
-
-"""### GCMI"""
-# alpha = 1.
-beta = 0.0
-auto_labeling_strategy = "gcmi"
-# active_learning_strategy = "random"
-args['num_partitions'] = 1
-# balance_loss = False
-
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
-os.makedirs(auto_label_results_save_directory, exist_ok=True)
-
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
-    train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    num_al_rounds = (train_cap - seed_set_size) // budget
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
-
-        # Determine if this experiment needs to be run
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Running {experiment_results_file_name}")
-            print("======================================")
-
-            # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
-            with open(experiment_results_path, "w") as write_file:
-                json.dump(results, write_file)
-        else:
-            print("======================================")
-            print(F"Results already obtained; skipping {experiment_results_file_name}")
-            print("======================================")
-
-"""### LogDetMI"""
-beta = 0.0
-auto_labeling_strategy = "logdetmi"
-args['num_partitions'] = 5 # LogDetMI uses larger kernels; 5 partitions are needed
-# balance_loss = False
-
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
-os.makedirs(auto_label_results_save_directory, exist_ok=True)
-
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
-    train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    num_al_rounds = (train_cap - seed_set_size) // budget
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
-
-        # Determine if this experiment needs to be run
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Running {experiment_results_file_name}")
-            print("======================================")
-
-            # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
-            with open(experiment_results_path, "w") as write_file:
-                json.dump(results, write_file)
-        else:
-            print("======================================")
-            print(F"Results already obtained; skipping {experiment_results_file_name}")
-            print("======================================")
-
-"""### Highest Confidence"""
-
-#alpha = 0
-beta = 0.0
-auto_labeling_strategy = "highest_confidence"
-#active_learning_strategy = "random"
-args['num_partitions'] = 1 # LogDetMI uses larger kernels; 5 partitions are needed
-# balance_loss = False
-
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
-os.makedirs(auto_label_results_save_directory, exist_ok=True)
-
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
-    train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    num_al_rounds = (train_cap - seed_set_size) // budget
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
-
-        # Determine if this experiment needs to be run
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Running {experiment_results_file_name}")
-            print("======================================")
-
-            # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
-            with open(experiment_results_path, "w") as write_file:
-                json.dump(results, write_file)
-        else:
-            print("======================================")
-            print(F"Results already obtained; skipping {experiment_results_file_name}")
-            print("======================================")
-
-"""## Pure Active Learning
-"""
-auto_label_al_save_directory = os.path.join(base_save_directory, 'AL')
-# alpha = 0.0
-beta = 0.0
-auto_labeling_strategy = "highest_confidence"
-#active_learning_strategy = "random"
-args['num_partitions'] = 1
-# balance_loss = False
-
-auto_label_results_save_directory = os.path.join(base_save_directory, F"{0.0}_{beta}")
-os.makedirs(auto_label_results_save_directory, exist_ok=True)
-
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
-    train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    num_al_rounds = (train_cap - seed_set_size) // budget
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name under which the results should be saved    
-        experiment_results_file_name = F"0.0_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
-
-        # Determine if this experiment needs to be run
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Running {experiment_results_file_name}")
-            print("======================================")
-
-            # There is no data for this run. Run this experiment again.
-            results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, 0.0, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
-            with open(experiment_results_path, "w") as write_file:
-                json.dump(results, write_file)
-        else:
-            print("======================================")
-            print(F"Results already obtained; skipping {experiment_results_file_name}")
-            print("======================================")
-
-"""# PLOTTING
-
-## Definitions
-
-### Default Plot Styling
-"""
-
-matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['axes.spines.right'] = False
-matplotlib.rcParams['axes.spines.top'] = False
-plt.rc('font', family='serif')
-plt.rc('xtick', labelsize=18)
-plt.rc('ytick', labelsize=18)
-matplotlib.rc('text', usetex=True)
-matplotlib.rcParams['text.latex.preamble']=[r"\usepackage{amsmath,amsfonts}"]
-matplotlib.rcParams['text.latex.preamble']=[r"\usepackage{bm}"]
-plt.rc('axes', linewidth=1)
-plt.rc('font', weight='bold')
-matplotlib.rcParams['text.latex.preamble'] = [r'\boldmath']
-
-figdim = (12,6)
-figdpi = 120
-
-shade_alpha = 0.2
-axis_label_font_size = 22
-
-plot_title_font_size = 22
-
-"""### Load Experiment Results"""
-
-def get_experiment_results(auto_label_load_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss=False):
-
-    #train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    #init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
-    #num_al_rounds = (train_cap - seed_set_size) // budget
-    exp_results_list = []
-
-    for run_count in range(per_exp_runs):
-        if args['embedding_type'] == 'gradients':
-            file_name_field = F"gradients_{args['gradType']}"
-        elif args['embedding_type'] == 'features':
-            file_name_field = F"features_{args['layer_name']}"
-
-        # Get the results file name    
-        experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{args['smi_function']}_{args['al_strategy']}_{file_name_field}_{args['metric']}_{run_count}.json"
-        experiment_results_path = os.path.join(auto_label_load_directory, experiment_results_file_name)
-
-        # Determine if this experiment can be loaded
-        if not os.path.isfile(experiment_results_path):
-            print("======================================")
-            print(F"Missing {experiment_results_path}")
-            print("======================================")
-        else:
-            with open(experiment_results_path, "r") as json_file:
-                exp_dict = json.load(json_file)
-                exp_results_list.append(exp_dict)
-
-    return exp_results_list
-
-"""### Averages/STDs of Experiments
-
-**Averages/STDs of Lists**
-"""
-
-def get_avg_std(list_of_lists):
-
-    # Calculate average list
-    avg_list = None
-    for a_list in list_of_lists:
-        if avg_list is None:
-            avg_list = a_list
-        else:
-            avg_list = [(x + y) for (x,y) in zip(avg_list, a_list)]
-    num_lists = len(list_of_lists)
-    avg_list = [(x / num_lists) for x in avg_list]
-
-    if num_lists == 1:
-        std_list = [0.0 for x in range(len(avg_list))]
+
+if __name__ == "__main__":
+    """
+    Experimental Settings
+    """
+    parser = ArgumentParser()
+    # dataset config
+    parser.add_argument("--experiment", "-e", default="mnist", type=str, help="Experiment setting")
+    parser.add_argument("--alpha", "-a", default=0.9, type=float, help="ALPHA Value")
+    parser.add_argument("--al_strategy", default="random", type=str, help="AL strategy")
+    parser.add_argument("--bl", default=False, type=bool, help="use balanced loss")
+    parser.add_argument("--device", default=0, type=int, help="DEVICE ID")
+    init_args = parser.parse_args()
+    experiment_name = init_args.experiment
+    alpha = init_args.alpha
+    active_learning_strategy = init_args.al_strategy
+    balance_loss = init_args.bl
+    # print("\n Balanced Loss is: ", balance_loss, "\n")
+    device_id = init_args.device
+
+    """## Pre-Experiment"""
+    if experiment_name == 'cifar10':
+        dataset_name = "CIFAR10"
+        model_name = "resnet18"
+        experiment_seed_budget_caps = [(3000,3000,30000),
+                                (500,500,5000),
+                                (1000,1000,10000),
+                                (2000,2000,20000)]
+        mp.set_start_method("spawn")
+        per_exp_runs = 1
+        args = {'islogs': False,
+                'optimizer': 'sgd',
+                'isverbose': True,
+                'isreset': True,
+                'max_accuracy': 0.99,
+                'n_epoch': 300,
+                'lr': 0.001,
+                'device': 'cuda:'+ str(device_id),
+                'batch_size': 64,
+                'thread_count': 3,
+                'metric': 'cosine',
+                'embedding_type': 'gradients',
+                'gradType': 'bias_linear'}            
+    elif experiment_name == 'mnist':
+        dataset_name = "MNIST"
+        model_name = "mnistnet"
+        experiment_seed_budget_caps = [(20,30,200),
+                                    (20,60,200),
+                                    (20,90,200),
+                                    (40,180,400),
+                                    (100,150,1000),
+                                    (500,2000,2500),
+                                    (100,900,1000),
+                                    (20,180,200)
+                                    ]
+        per_exp_runs = 3
+        args = {'islogs': False,
+                'optimizer': 'sgd',
+                'isverbose': True,
+                'isreset': True,
+                'max_accuracy': 0.99,
+                'n_epoch': 300,
+                'lr': 0.001,
+                'device': 'cuda:'+ str(device_id),
+                'batch_size': 64,
+                'thread_count': 3,
+                'metric': 'cosine',
+                'embedding_type': 'gradients',
+                'gradType': 'bias_linear'}
+    elif experiment_name == 'cifar100':
+        dataset_name = "CIFAR100"
+        model_name = "resnet18"
+        experiment_seed_budget_caps = [(5000,5000,25000),
+                                    (10000,7500,40000)]
+        per_exp_runs = 3
+        args = {'islogs': False,
+                'optimizer': 'sgd',
+                'isverbose': True,
+                'isreset': True,
+                'max_accuracy': 0.99,
+                'n_epoch': 300,
+                'lr': 0.001,
+                'device': 'cuda:'+ str(device_id),
+                'batch_size': 64,
+                'metric': 'cosine',
+                'embedding_type': 'gradients',
+                'gradType': 'bias_linear'}
+
+    """## Saving Parameters"""
+
+    mount_point_directory = "results/" + dataset_name
+    google_drive_directory = "results/" + dataset_name
+    base_save_directory = "results/" + dataset_name
+
+    auto_label_no_hil_save_directory = os.path.join(base_save_directory, "auto_label_no_hil")
+    auto_label_no_hil_loss_balanced_save_directory = os.path.join(base_save_directory, "auto_label_no_hil_loss_balanced")
+    auto_label_hil_save_directory = os.path.join(base_save_directory, "auto_label_hil")
+
+    google_drive_directory = "results/" + dataset_name + "/check/"
+    checkpoint_directory = os.path.join(mount_point_directory, google_drive_directory)
+
+    google_drive_directory = "results/" + dataset_name+ "/model/"
+    model_directory = os.path.join(mount_point_directory, google_drive_directory)
+
+    dataset_root_directory = "data/"
+
+    os.makedirs(auto_label_no_hil_save_directory, exist_ok=True)
+    os.makedirs(auto_label_hil_save_directory, exist_ok=True)
+    os.makedirs(checkpoint_directory, exist_ok=True)
+    os.makedirs(model_directory, exist_ok=True)
+
+    """
+    # EXPERIMENTS
+    
+    ## Pure Auto-Labeled
+
+    ### FL1MI
+    """
+
+    # alpha = 0.8
+    beta = 0.0
+    auto_labeling_strategy = "fl1mi"
+    # active_learning_strategy = "random"
+    args['num_partitions'] = 5 # FL1MI uses larger kernels; 5 partitions are needed
+    # balance_loss = False
+
+    auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
+    os.makedirs(auto_label_results_save_directory, exist_ok=True)
+
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
+        train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        num_al_rounds = (train_cap - seed_set_size) // budget
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name under which the results should be saved    
+            experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
+
+            # Determine if this experiment needs to be run
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Running {experiment_results_file_name}")
+                print("======================================")
+
+                # There is no data for this run. Run this experiment again.
+                results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
+                with open(experiment_results_path, "w") as write_file:
+                    json.dump(results, write_file)
+            else:
+                print("======================================")
+                print(F"Results already obtained; skipping {experiment_results_file_name}")
+                print("======================================")
+
+    """### FL2MI"""
+
+    # alpha = 
+    beta = 0.0
+    auto_labeling_strategy = "fl2mi"
+    # active_learning_strategy = "random"
+    args['num_partitions'] = 1
+    # balance_loss = False
+
+    auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
+    os.makedirs(auto_label_results_save_directory, exist_ok=True)
+
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
+        train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        num_al_rounds = (train_cap - seed_set_size) // budget
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name under which the results should be saved    
+            experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
+
+            # Determine if this experiment needs to be run
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Running {experiment_results_file_name}")
+                print("======================================")
+
+                # There is no data for this run. Run this experiment again.
+                results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
+                with open(experiment_results_path, "w") as write_file:
+                    json.dump(results, write_file)
+            else:
+                print("======================================")
+                print(F"Results already obtained; skipping {experiment_results_file_name}")
+                print("======================================")
+
+    """### GCMI"""
+    # alpha = 1.
+    beta = 0.0
+    auto_labeling_strategy = "gcmi"
+    # active_learning_strategy = "random"
+    args['num_partitions'] = 1
+    # balance_loss = False
+
+    auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
+    os.makedirs(auto_label_results_save_directory, exist_ok=True)
+
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
+        train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        num_al_rounds = (train_cap - seed_set_size) // budget
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name under which the results should be saved    
+            experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
+
+            # Determine if this experiment needs to be run
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Running {experiment_results_file_name}")
+                print("======================================")
+
+                # There is no data for this run. Run this experiment again.
+                results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
+                with open(experiment_results_path, "w") as write_file:
+                    json.dump(results, write_file)
+            else:
+                print("======================================")
+                print(F"Results already obtained; skipping {experiment_results_file_name}")
+                print("======================================")
+
+    """### LogDetMI"""
+    beta = 0.0
+    auto_labeling_strategy = "logdetmi"
+    args['num_partitions'] = 5 # LogDetMI uses larger kernels; 5 partitions are needed
+    # balance_loss = False
+
+    auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
+    os.makedirs(auto_label_results_save_directory, exist_ok=True)
+
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
+        train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        num_al_rounds = (train_cap - seed_set_size) // budget
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name under which the results should be saved    
+            experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
+
+            # Determine if this experiment needs to be run
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Running {experiment_results_file_name}")
+                print("======================================")
+
+                # There is no data for this run. Run this experiment again.
+                results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
+                with open(experiment_results_path, "w") as write_file:
+                    json.dump(results, write_file)
+            else:
+                print("======================================")
+                print(F"Results already obtained; skipping {experiment_results_file_name}")
+                print("======================================")
+
+    """### Highest Confidence"""
+
+    #alpha = 0
+    beta = 0.0
+    auto_labeling_strategy = "highest_confidence"
+    #active_learning_strategy = "random"
+    args['num_partitions'] = 1 # LogDetMI uses larger kernels; 5 partitions are needed
+    # balance_loss = False
+
+    auto_label_results_save_directory = os.path.join(base_save_directory, F"{alpha}_{beta}")
+    os.makedirs(auto_label_results_save_directory, exist_ok=True)
+
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
+        train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        num_al_rounds = (train_cap - seed_set_size) // budget
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name under which the results should be saved    
+            experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
+
+            # Determine if this experiment needs to be run
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Running {experiment_results_file_name}")
+                print("======================================")
+
+                # There is no data for this run. Run this experiment again.
+                results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss)
+                with open(experiment_results_path, "w") as write_file:
+                    json.dump(results, write_file)
+            else:
+                print("======================================")
+                print(F"Results already obtained; skipping {experiment_results_file_name}")
+                print("======================================")
+
+    """## Pure Active Learning
+    """
+    auto_label_al_save_directory = os.path.join(base_save_directory, 'AL')
+    # alpha = 0.0
+    beta = 0.0
+    auto_labeling_strategy = "highest_confidence"
+    #active_learning_strategy = "random"
+    args['num_partitions'] = 1
+    # balance_loss = False
+
+    auto_label_results_save_directory = os.path.join(base_save_directory, F"{0.0}_{beta}")
+    os.makedirs(auto_label_results_save_directory, exist_ok=True)
+
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps:
+        train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        num_al_rounds = (train_cap - seed_set_size) // budget
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name under which the results should be saved    
+            experiment_results_file_name = F"0.0_{round(1-alpha-beta, 1)}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{auto_labeling_strategy}_{active_learning_strategy}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_no_hil_save_directory, experiment_results_file_name)
+
+            # Determine if this experiment needs to be run
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Running {experiment_results_file_name}")
+                print("======================================")
+
+                # There is no data for this run. Run this experiment again.
+                results = al_train_loop(train_dataset, copy.deepcopy(init_train_lake_usage_list), test_dataset, copy.deepcopy(model), num_al_rounds, budget, args, nclasses, alpha, beta, auto_labeling_strategy, active_learning_strategy, checkpoint_directory, experiment_results_file_name, balance_loss=balance_loss, AL=True)
+                with open(experiment_results_path, "w") as write_file:
+                    json.dump(results, write_file)
+            else:
+                print("======================================")
+                print(F"Results already obtained; skipping {experiment_results_file_name}")
+                print("======================================")
+
+    """# PLOTTING
+
+    ## Definitions
+
+    ### Default Plot Styling
+    """
+
+    matplotlib.rcParams['text.usetex'] = True
+    matplotlib.rcParams['axes.spines.right'] = False
+    matplotlib.rcParams['axes.spines.top'] = False
+    plt.rc('font', family='serif')
+    plt.rc('xtick', labelsize=18)
+    plt.rc('ytick', labelsize=18)
+    matplotlib.rc('text', usetex=True)
+    matplotlib.rcParams['text.latex.preamble']=[r"\usepackage{amsmath,amsfonts}"]
+    matplotlib.rcParams['text.latex.preamble']=[r"\usepackage{bm}"]
+    plt.rc('axes', linewidth=1)
+    plt.rc('font', weight='bold')
+    matplotlib.rcParams['text.latex.preamble'] = [r'\boldmath']
+
+    figdim = (12,6)
+    figdpi = 120
+
+    shade_alpha = 0.2
+    axis_label_font_size = 22
+
+    plot_title_font_size = 22
+
+    """### Load Experiment Results"""
+
+    def get_experiment_results(auto_label_load_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss=False):
+
+        #train_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        #init_train_lake_usage_list = [1 if i in init_train_idx else 0 for i in range(len(train_dataset))]
+        #num_al_rounds = (train_cap - seed_set_size) // budget
+        exp_results_list = []
+
+        for run_count in range(per_exp_runs):
+            if args['embedding_type'] == 'gradients':
+                file_name_field = F"gradients_{args['gradType']}"
+            elif args['embedding_type'] == 'features':
+                file_name_field = F"features_{args['layer_name']}"
+
+            # Get the results file name    
+            experiment_results_file_name = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{args['smi_function']}_{args['al_strategy']}_{file_name_field}_{args['metric']}_{run_count}.json"
+            experiment_results_path = os.path.join(auto_label_load_directory, experiment_results_file_name)
+
+            # Determine if this experiment can be loaded
+            if not os.path.isfile(experiment_results_path):
+                print("======================================")
+                print(F"Missing {experiment_results_path}")
+                print("======================================")
+            else:
+                with open(experiment_results_path, "r") as json_file:
+                    exp_dict = json.load(json_file)
+                    exp_results_list.append(exp_dict)
+
+        return exp_results_list
+
+    """### Averages/STDs of Experiments
+
+    **Averages/STDs of Lists**
+    """
+
+    def get_avg_std(list_of_lists):
+
+        # Calculate average list
+        avg_list = None
+        for a_list in list_of_lists:
+            if avg_list is None:
+                avg_list = a_list
+            else:
+                avg_list = [(x + y) for (x,y) in zip(avg_list, a_list)]
+        num_lists = len(list_of_lists)
+        avg_list = [(x / num_lists) for x in avg_list]
+
+        if num_lists == 1:
+            std_list = [0.0 for x in range(len(avg_list))]
+            return avg_list, std_list
+
+        # Calculate sample standard dev. list
+        std_list = None
+        for a_list in list_of_lists:
+            to_add_list = [(x - y)*(x - y) for (x,y) in zip(a_list, avg_list)]
+            if std_list is None:
+                std_list = to_add_list
+            else:
+                std_list = [(x + y) for (x,y) in zip(to_add_list, std_list)]
+        std_list = [math.sqrt(x / (num_lists - 1)) for x in std_list]
+        
         return avg_list, std_list
 
-    # Calculate sample standard dev. list
-    std_list = None
-    for a_list in list_of_lists:
-        to_add_list = [(x - y)*(x - y) for (x,y) in zip(a_list, avg_list)]
-        if std_list is None:
-            std_list = to_add_list
-        else:
-            std_list = [(x + y) for (x,y) in zip(to_add_list, std_list)]
-    std_list = [math.sqrt(x / (num_lists - 1)) for x in std_list]
-    
-    return avg_list, std_list
+    """**Get Average/STD of Test Accuracies**"""
 
-"""**Get Average/STD of Test Accuracies**"""
+    def get_avg_std_test_acc(list_of_exps):
 
-def get_avg_std_test_acc(list_of_exps):
+        list_of_lists = []
+        for exp in list_of_exps:
+            list_of_lists.append(exp['test_accuracies'])
+        return get_avg_std(list_of_lists)
 
-    list_of_lists = []
-    for exp in list_of_exps:
-        list_of_lists.append(exp['test_accuracies'])
-    return get_avg_std(list_of_lists)
+    """**Get Average/STD of % Correctly Auto-Labeled Points**"""
 
-"""**Get Average/STD of % Correctly Auto-Labeled Points**"""
+    def get_avg_std_correctly_labeled_points(list_of_exps):
 
-def get_avg_std_correctly_labeled_points(list_of_exps):
+        list_of_lists = []
+        for exp in list_of_exps:
+            selection_matrices = exp['selection_matrices']
+            exp_correctly_labeled_points_list = []
+            for selection_matrix in selection_matrices:
+                nclasses = len(selection_matrix)
+                correctly_labeled_points_frac = 0.
+                for i in range(nclasses):
+                    correctly_labeled_points_frac += selection_matrix[i][i]
+                correctly_labeled_points_frac /= sum([sum(selection_matrix_row) for selection_matrix_row in selection_matrix])
+                exp_correctly_labeled_points_list.append(correctly_labeled_points_frac)
+            list_of_lists.append(exp_correctly_labeled_points_list)
+        return get_avg_std(list_of_lists)
 
-    list_of_lists = []
-    for exp in list_of_exps:
-        selection_matrices = exp['selection_matrices']
-        exp_correctly_labeled_points_list = []
-        for selection_matrix in selection_matrices:
-            nclasses = len(selection_matrix)
-            correctly_labeled_points_frac = 0.
-            for i in range(nclasses):
-                correctly_labeled_points_frac += selection_matrix[i][i]
-            correctly_labeled_points_frac /= sum([sum(selection_matrix_row) for selection_matrix_row in selection_matrix])
-            exp_correctly_labeled_points_list.append(correctly_labeled_points_frac)
-        list_of_lists.append(exp_correctly_labeled_points_list)
-    return get_avg_std(list_of_lists)
+    """**Get Average/STD of Cumulative Correctly Auto-Labeled Points**"""
 
-"""**Get Average/STD of Cumulative Correctly Auto-Labeled Points**"""
+    def get_avg_std_total_corrections_needed(list_of_exps):
 
-def get_avg_std_total_corrections_needed(list_of_exps):
+        list_of_lists = []
+        for exp in list_of_exps:
+            selection_matrices = exp['selection_matrices']
+            exp_correctly_labeled_points_list = []
+            working_sum = 0
+            for selection_matrix in selection_matrices:
+                nclasses = len(selection_matrix)
+                correctly_labeled_points = 0
+                for i in range(nclasses):
+                    correctly_labeled_points += selection_matrix[i][i]
+                corrections_needed = exp['budget'] - correctly_labeled_points
+                exp_correctly_labeled_points_list.append(working_sum + corrections_needed)
+                working_sum += corrections_needed
+            list_of_lists.append(exp_correctly_labeled_points_list)
+        return get_avg_std(list_of_lists)
 
-    list_of_lists = []
-    for exp in list_of_exps:
-        selection_matrices = exp['selection_matrices']
-        exp_correctly_labeled_points_list = []
-        working_sum = 0
-        for selection_matrix in selection_matrices:
-            nclasses = len(selection_matrix)
-            correctly_labeled_points = 0
-            for i in range(nclasses):
-                correctly_labeled_points += selection_matrix[i][i]
-            corrections_needed = exp['budget'] - correctly_labeled_points
-            exp_correctly_labeled_points_list.append(working_sum + corrections_needed)
-            working_sum += corrections_needed
-        list_of_lists.append(exp_correctly_labeled_points_list)
-    return get_avg_std(list_of_lists)
+    """**Get Average/STD of # Incorrectly Labeled Points versus SMI Gain**"""
 
-"""**Get Average/STD of # Incorrectly Labeled Points versus SMI Gain**"""
+    def get_avg_std_inc_label_smi(exp_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args, round, budget_granularity=0.1):
 
-def get_avg_std_inc_label_smi(exp_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args, round, budget_granularity=0.1):
+        full_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
+        list_of_exps = get_experiment_results(auto_label_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
 
-    full_dataset, test_dataset, init_train_idx, model, nclasses = get_experiment_fixture(dataset_root_directory, dataset_name, seed_set_size, model_name, model_directory, args)
-    list_of_exps = get_experiment_results(auto_label_hil_save_directory, dataset_root_directory, dataset_name, model_name, model_directory, selection_mode, seed_set_size, budget, train_cap, per_exp_runs, args)
+        list_of_lists = []
+        point_cutoffs = []
+        for exp in list_of_exps:
+            selection_matrix = exp['selected_idx'][round]
+            correctness_gain_list = []
+            for sel_class, selection_row in enumerate(selection_matrix):
+                if len(selection_row) == 0:
+                    continue
 
-    list_of_lists = []
-    point_cutoffs = []
-    for exp in list_of_exps:
-        selection_matrix = exp['selected_idx'][round]
-        correctness_gain_list = []
-        for sel_class, selection_row in enumerate(selection_matrix):
-            if len(selection_row) == 0:
-                continue
+                max_gain = max(selection_row, key=lambda x:x[1])[1]
+                min_gain = min(selection_row, key=lambda x:x[1])[1]
 
-            max_gain = max(selection_row, key=lambda x:x[1])[1]
-            min_gain = min(selection_row, key=lambda x:x[1])[1]
+                for sel_idx, gain in selection_row:
+                    _, true_label = full_dataset[sel_idx]
+                    normalized_gain = (gain - min_gain) / (max_gain - min_gain)
+                    correctness_gain_list.append((sel_class == true_label, normalized_gain))
+            correctness_gain_list = sorted(correctness_gain_list, key=lambda x:x[1])
+            budget = len(correctness_gain_list)
+            num_budget_slices = int(1 / budget_granularity)
+            point_cutoffs = [int(i * budget / num_budget_slices) for i in range(num_budget_slices + 1)]
 
-            for sel_idx, gain in selection_row:
-                _, true_label = full_dataset[sel_idx]
-                normalized_gain = (gain - min_gain) / (max_gain - min_gain)
-                correctness_gain_list.append((sel_class == true_label, normalized_gain))
-        correctness_gain_list = sorted(correctness_gain_list, key=lambda x:x[1])
-        budget = len(correctness_gain_list)
-        num_budget_slices = int(1 / budget_granularity)
-        point_cutoffs = [int(i * budget / num_budget_slices) for i in range(num_budget_slices + 1)]
+            total_computed_gain = 0.
+            incorrectly_labeled_total_list = []
+            for point_cutoff in point_cutoffs:
+                if point_cutoff == 0:
+                    gain_cutoff = -1
+                else:
+                    gain_cutoff = correctness_gain_list[point_cutoff - 1][1]
 
-        total_computed_gain = 0.
-        incorrectly_labeled_total_list = []
-        for point_cutoff in point_cutoffs:
-            if point_cutoff == 0:
-                gain_cutoff = -1
-            else:
-                gain_cutoff = correctness_gain_list[point_cutoff - 1][1]
+                total_incorrect = 0
 
-            total_incorrect = 0
+                for correct, norm_gain in correctness_gain_list:
+                    if norm_gain > gain_cutoff:
+                        break
+                    if not correct:
+                        total_incorrect += 1
+                incorrectly_labeled_total_list.append(total_incorrect)
+            list_of_lists.append(incorrectly_labeled_total_list)
 
-            for correct, norm_gain in correctness_gain_list:
-                if norm_gain > gain_cutoff:
-                    break
-                if not correct:
-                    total_incorrect += 1
-            incorrectly_labeled_total_list.append(total_incorrect)
-        list_of_lists.append(incorrectly_labeled_total_list)
+        return point_cutoffs, get_avg_std(list_of_lists)
 
-    return point_cutoffs, get_avg_std(list_of_lists)
+    """**Get Labeling Cost over Experiment**"""
 
-"""**Get Labeling Cost over Experiment**"""
+    def get_avg_labeling_costs(list_of_exps, cost_to_check_label, cost_to_assign_label):
 
-def get_avg_labeling_costs(list_of_exps, cost_to_check_label, cost_to_assign_label):
-
-    list_of_lists = []
-    for exp in list_of_exps:
-        exp_labeling_costs = [0]
-        al_cnts = exp['al_cnt']
-        working_sum = 0
-        for al_cnt in al_cnts:
-            round_labeling_cost = al_cnt * (cost_to_assign_label)
-            working_sum += round_labeling_cost
-            exp_labeling_costs.append(working_sum)
-        list_of_lists.append(exp_labeling_costs)
-    average_labeling_costs, std_labeling_costs = get_avg_std(list_of_lists)
-    return average_labeling_costs
+        list_of_lists = []
+        for exp in list_of_exps:
+            exp_labeling_costs = [0]
+            al_cnts = exp['al_cnt']
+            working_sum = 0
+            for al_cnt in al_cnts:
+                round_labeling_cost = al_cnt * (cost_to_assign_label)
+                working_sum += round_labeling_cost
+                exp_labeling_costs.append(working_sum)
+            list_of_lists.append(exp_labeling_costs)
+        average_labeling_costs, std_labeling_costs = get_avg_std(list_of_lists)
+        return average_labeling_costs
 
 
-"""## Auto+AL Test Accuracy versus Labeling Cost"""
-# Define a subset of the configurations to show here to avoid many, many lines
-experiment_seed_budget_caps_to_show = experiment_seed_budget_caps
+    """## Auto+AL Test Accuracy versus Labeling Cost"""
+    # Define a subset of the configurations to show here to avoid many, many lines
+    experiment_seed_budget_caps_to_show = experiment_seed_budget_caps
 
-strategy_labels = {'fl1mi_a': 'Auto FL1MI',
-                   'fl2mi_a': 'Auto FL2MI',
-                   'gcmi_a': 'Auto GCMI',
-                   'logdetmi_a': 'Auto LOGDETMI',
-                   'confidence_a': 'Auto HC',
-                   'al': active_learning_strategy.upper()}
+    strategy_labels = {'fl1mi_a': 'Auto FL1MI',
+                    'fl2mi_a': 'Auto FL2MI',
+                    'gcmi_a': 'Auto GCMI',
+                    'logdetmi_a': 'Auto LOGDETMI',
+                    'confidence_a': 'Auto HC',
+                    'al': active_learning_strategy.upper()}
 
-strategy_colors = {'fl1mi_a': (1,0,0),
-                   'fl2mi_a': (0,1,0),
-                   'gcmi_a': (0,0,1),
-                   'logdetmi_a': (1,1,0),
-                   'confidence_a': (1,0,1),
-                   'al': (0,0,0)}
+    strategy_colors = {'fl1mi_a': (1,0,0),
+                    'fl2mi_a': (0,1,0),
+                    'gcmi_a': (0,0,1),
+                    'logdetmi_a': (1,1,0),
+                    'confidence_a': (1,0,1),
+                    'al': (0,0,0)}
 
-shade_alpha = 0.25
-cost_to_check_label = 1
-cost_to_assign_label = 1
+    shade_alpha = 0.25
+    cost_to_check_label = 1
+    cost_to_assign_label = 1
 
-# Obtain the experiment results for our given configuration
-for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
-    # Create a figure
-    comparison_figdim = (22,7)
-    comparison_fig, axes = plt.subplots(nrows=1, ncols=1, figsize=comparison_figdim, dpi=120, gridspec_kw = {'top':0.8})
-    # Set titles and axis labels
-    xlabel = r"\textbf{Labeling Cost}"
-    ylabel = r"\textbf{Test Accuracy}"
-    title = F"{seed_set_size} to {train_cap} using budget {budget} with Alpha={alpha}"
-    comparison_fig.suptitle(title, fontsize=plot_title_font_size)
-    axes.set_title(r"\textbf{Accuracy vs Labeling Cost}", fontsize=plot_title_font_size)
-    axes.set_xlabel(xlabel, fontsize=axis_label_font_size)
-    axes.set_ylabel(ylabel, fontsize=axis_label_font_size)
-    lines_for_legend = []
+    # Obtain the experiment results for our given configuration
+    for (seed_set_size, budget, train_cap) in experiment_seed_budget_caps_to_show:
+        # Create a figure
+        comparison_figdim = (22,7)
+        comparison_fig, axes = plt.subplots(nrows=1, ncols=1, figsize=comparison_figdim, dpi=120, gridspec_kw = {'top':0.8})
+        # Set titles and axis labels
+        xlabel = r"\textbf{Labeling Cost}"
+        ylabel = r"\textbf{Test Accuracy}"
+        title = F"{seed_set_size} to {train_cap} using budget {budget} with Alpha={alpha}"
+        comparison_fig.suptitle(title, fontsize=plot_title_font_size)
+        axes.set_title(r"\textbf{Accuracy vs Labeling Cost}", fontsize=plot_title_font_size)
+        axes.set_xlabel(xlabel, fontsize=axis_label_font_size)
+        axes.set_ylabel(ylabel, fontsize=axis_label_font_size)
+        lines_for_legend = []
 
-    # Do auto fl1mi
-    beta = 0.0
-    selection_mode = "auto"
-    args['smi_function'] = 'fl1mi'
-    args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
-    labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
-    average_acc, std = get_avg_std_test_acc(exp_results_list)
-    lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
-    upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['fl1mi_a'], marker='o')[0]
-    lines_for_legend.append(line)
-    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl1mi_a'])
-    
-    # Do auto fl2mi
-    selection_mode = "auto"
-    args['smi_function'] = 'fl2mi'
-    args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
-    labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
-    average_acc, std = get_avg_std_test_acc(exp_results_list)
-    lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
-    upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['fl2mi_a'], marker='o')[0]
-    lines_for_legend.append(line)
-    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl2mi_a'])
-    
-    # Do auto gcmi
-    selection_mode = "auto"
-    args['smi_function'] = 'gcmi'
-    args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
-    labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
-    average_acc, std = get_avg_std_test_acc(exp_results_list)
-    lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
-    upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['gcmi_a'], marker='o')[0]
-    lines_for_legend.append(line)
-    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['gcmi_a'])
-    
-    # Do auto logdetmi
-    selection_mode = "auto"
-    args['smi_function'] = 'logdetmi'
-    args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
-    labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
-    average_acc, std = get_avg_std_test_acc(exp_results_list)
-    lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
-    upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['logdetmi_a'], marker='o')[0]
-    lines_for_legend.append(line)
-    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['logdetmi_a'])
-    
-    # Do Auto highest confidence
-    selection_mode = "auto"
-    args['smi_function'] = 'highest_confidence'
-    args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
-    labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
-    average_acc, std = get_avg_std_test_acc(exp_results_list)
-    lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
-    upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['confidence_a'], marker='o')[0]
-    lines_for_legend.append(line)
-    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['confidence_a'])
-    
-    # Do AL
-    # alpha = 0.0
-    selection_mode = "auto"
-    args['smi_function'] = 'highest_confidence'
-    args['al_strategy'] = active_learning_strategy
-    exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, 0.0, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
-    # Random's labeling cost differs from the rest.
-    labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
-    #labeling_cost = [exp_results_list[0]['budget'] * i * cost_to_assign_label for i in range(len(exp_results_list[0]['set_sizes']))]
-    average_acc, std = get_avg_std_test_acc(exp_results_list)
-    lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
-    upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
-    line = axes.plot(labeling_cost, average_acc, color=strategy_colors['al'], marker='o')[0]
-    lines_for_legend.append(line)
-    axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['al'])
-    label_list = [strategy_labels[key] for key in strategy_labels]
-    label_perm = [0,1,2,3,4,5]
-    label_list = [label_list[i] for i in label_perm]
-    lines_for_legend = [lines_for_legend[i] for i in label_perm]
-    comparison_fig.legend(lines_for_legend, label_list, loc="upper center", ncol=6, borderaxespad=3)
-    # plt.show()
-    jpg_file = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{active_learning_strategy}_{args['metric']}.png"
-    image_path = os.path.join(auto_label_no_hil_save_directory, jpg_file)
-    plt.savefig(image_path)
+        # Do auto fl1mi
+        beta = 0.0
+        selection_mode = "auto"
+        args['smi_function'] = 'fl1mi'
+        args['al_strategy'] = active_learning_strategy
+        exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+        labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
+        average_acc, std = get_avg_std_test_acc(exp_results_list)
+        lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
+        upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
+        line = axes.plot(labeling_cost, average_acc, color=strategy_colors['fl1mi_a'], marker='o')[0]
+        lines_for_legend.append(line)
+        axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl1mi_a'])
+        
+        # Do auto fl2mi
+        selection_mode = "auto"
+        args['smi_function'] = 'fl2mi'
+        args['al_strategy'] = active_learning_strategy
+        exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+        labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
+        average_acc, std = get_avg_std_test_acc(exp_results_list)
+        lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
+        upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
+        line = axes.plot(labeling_cost, average_acc, color=strategy_colors['fl2mi_a'], marker='o')[0]
+        lines_for_legend.append(line)
+        axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['fl2mi_a'])
+        
+        # Do auto gcmi
+        selection_mode = "auto"
+        args['smi_function'] = 'gcmi'
+        args['al_strategy'] = active_learning_strategy
+        exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+        labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
+        average_acc, std = get_avg_std_test_acc(exp_results_list)
+        lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
+        upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
+        line = axes.plot(labeling_cost, average_acc, color=strategy_colors['gcmi_a'], marker='o')[0]
+        lines_for_legend.append(line)
+        axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['gcmi_a'])
+        
+        # Do auto logdetmi
+        selection_mode = "auto"
+        args['smi_function'] = 'logdetmi'
+        args['al_strategy'] = active_learning_strategy
+        exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+        labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
+        average_acc, std = get_avg_std_test_acc(exp_results_list)
+        lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
+        upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
+        line = axes.plot(labeling_cost, average_acc, color=strategy_colors['logdetmi_a'], marker='o')[0]
+        lines_for_legend.append(line)
+        axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['logdetmi_a'])
+        
+        # Do Auto highest confidence
+        selection_mode = "auto"
+        args['smi_function'] = 'highest_confidence'
+        args['al_strategy'] = active_learning_strategy
+        exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, alpha, beta, seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+        labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
+        average_acc, std = get_avg_std_test_acc(exp_results_list)
+        lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
+        upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
+        line = axes.plot(labeling_cost, average_acc, color=strategy_colors['confidence_a'], marker='o')[0]
+        lines_for_legend.append(line)
+        axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['confidence_a'])
+        
+        # Do AL
+        # alpha = 0.0
+        selection_mode = "auto"
+        args['smi_function'] = 'highest_confidence'
+        args['al_strategy'] = active_learning_strategy
+        exp_results_list = get_experiment_results(auto_label_no_hil_save_directory, dataset_name, model_name, 0.0, round(1-alpha-beta, 1), seed_set_size, budget, train_cap, per_exp_runs, args, balance_loss)
+        # Random's labeling cost differs from the rest.
+        labeling_cost = get_avg_labeling_costs(exp_results_list, cost_to_check_label, cost_to_assign_label)
+        #labeling_cost = [exp_results_list[0]['budget'] * i * cost_to_assign_label for i in range(len(exp_results_list[0]['set_sizes']))]
+        average_acc, std = get_avg_std_test_acc(exp_results_list)
+        lower_list = [(x-y) for  (x,y) in zip(average_acc,std)]
+        upper_list = [(x+y) for (x,y) in zip(average_acc,std)]
+        line = axes.plot(labeling_cost, average_acc, color=strategy_colors['al'], marker='o')[0]
+        lines_for_legend.append(line)
+        axes.fill_between(labeling_cost, lower_list, upper_list, alpha=shade_alpha, color=strategy_colors['al'])
+        label_list = [strategy_labels[key] for key in strategy_labels]
+        label_perm = [0,1,2,3,4,5]
+        label_list = [label_list[i] for i in label_perm]
+        lines_for_legend = [lines_for_legend[i] for i in label_perm]
+        comparison_fig.legend(lines_for_legend, label_list, loc="upper center", ncol=6, borderaxespad=3)
+        # plt.show()
+        jpg_file = F"{alpha}_{beta}_{balance_loss}_{dataset_name}_{model_name}_{seed_set_size}_{budget}_{train_cap}_{active_learning_strategy}_{args['metric']}.png"
+        image_path = os.path.join(auto_label_no_hil_save_directory, jpg_file)
+        plt.savefig(image_path)
