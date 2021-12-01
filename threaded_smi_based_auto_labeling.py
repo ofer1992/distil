@@ -1445,7 +1445,7 @@ if __name__ == "__main__":
         model_name = "resnet18"
         experiment_seed_budget_caps = [(5000,5000,25000),
                                     (10000,7500,40000)]
-        per_exp_runs = 3
+        per_exp_runs = 1
         args = {'islogs': False,
                 'optimizer': 'sgd',
                 'isverbose': True,
