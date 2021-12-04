@@ -911,7 +911,8 @@ def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_roun
                 'human_corrected_selection_matrices': [],
                 'auto_selection_times': [],
                 'al_selection_times': [],
-                'train_times': []
+                'train_times': [],
+                'al_cnt': [0 for _ in range(n_rounds)]
                 }
 
     # Set the initial round to 1
@@ -1017,7 +1018,7 @@ def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_roun
     # Record the training transform and test transform for disabling purposes
     train_transform = full_dataset.transform
     test_transform = test_dataset.transform
-    al_cnt = np.zeros(n_rounds)
+    # al_cnt = np.zeros(n_rounds)
     # Begin AL loop
     for rd in range(initial_round, n_rounds+1):
 
@@ -1143,7 +1144,7 @@ def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_roun
 
             train_indices = [i for (i,x) in enumerate(train_lake_usage_list) if x == 1]
             lake_indices = [i for (i,x) in enumerate(train_lake_usage_list) if x == 0]
-            al_cnt[rd-1] = len(selected_idx)
+            exp_dict['al_cnt'][rd-1] = len(selected_idx)
             # Now, update the train dataset and the lake dataset
             train_dataset = Subset(ReplaceLabelDataset(full_dataset, assigned_labels), train_indices)
             lake_dataset = Subset(full_dataset, lake_indices)
@@ -1193,7 +1194,7 @@ def al_train_loop(full_dataset, train_lake_usage_list, test_dataset, net, n_roun
         exp_dict['human_corrected_selection_matrices'].append(human_corrected_selection_matrix)
         exp_dict['auto_selection_times'].append(auto_selection_time)
         exp_dict['al_selection_times'].append(al_selection_time)
-        exp_dict['al_cnt'] = al_cnt.tolist()
+        # exp_dict['al_cnt'] = al_cnt.tolist()
 
         full_dataset.transform = train_transform # Re-enable any augmentation done during training
 
