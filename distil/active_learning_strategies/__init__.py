@@ -20,3 +20,4 @@ from .scg import SCG
 from .scmi import SCMI
 from .smi import SMI
 from .submod_sampling import SubmodularSampling
+from .prob_cover import ProbCover
